@@ -29,7 +29,7 @@ const MetricCard = ({ title, value, subtext, icon: Icon, colorClass, currency }:
 );
 
 const Dashboard: React.FC = () => {
-  const { state, updateCompanyName, updateBaseCurrency, updatePeriod, updateExchangeRate, addCurrency } = useFinancials();
+  const { state, updateCompanyName, updateBaseCurrency, updatePeriod, updateExchangeRate, addCurrency, updateCurrencySign } = useFinancials();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [showRateModal, setShowRateModal] = useState(false);
   const [newCurrency, setNewCurrency] = useState({ code: '', name: '', symbol: '', rate: 1.0 });
@@ -94,7 +94,18 @@ const Dashboard: React.FC = () => {
           </h2>
           <p className="text-slate-500 mt-1">Financial Dashboard &bull; {state.period}</p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+        <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto items-end">
+           <div className="w-16 sm:w-20">
+              <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">
+                Sign
+              </label>
+              <input
+                type="text"
+                value={state.currencySign}
+                onChange={(e) => updateCurrencySign(e.target.value)}
+                className="w-full px-2 py-2 bg-white border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-center font-bold"
+              />
+           </div>
            <div className="w-full sm:w-32">
             <label className="block text-xs font-semibold text-slate-500 uppercase mb-1.5">
               Base Currency
@@ -103,15 +114,15 @@ const Dashboard: React.FC = () => {
               <select
                 value={state.baseCurrency}
                 onChange={(e) => updateBaseCurrency(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-bold"
+                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-bold appearance-none"
               >
                 {state.currencies.map(c => (
-                  <option key={c.code} value={c.code}>{c.code} ({c.symbol})</option>
+                  <option key={c.code} value={c.code}>{c.code}</option>
                 ))}
               </select>
               <button 
                 onClick={() => setShowRateModal(true)}
-                className="absolute right-[-35px] top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-full"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-600 hover:bg-slate-100 rounded-full"
                 title="Manage Currencies"
               >
                 <Settings className="w-4 h-4" />

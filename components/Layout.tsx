@@ -46,7 +46,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="bg-emerald-500 p-2 rounded-lg">
               <Scale className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight">LedgerLens AI</h1>
+            <h1 className="text-xl font-bold tracking-tight">ERNEST Financial Report</h1>
           </div>
         </div>
         

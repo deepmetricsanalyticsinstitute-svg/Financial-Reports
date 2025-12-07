@@ -12,14 +12,15 @@ interface RowProps {
   value: number;
   isTotal?: boolean;
   isSubHeader?: boolean;
+  indent?: boolean;
 }
 
-const Row: React.FC<RowProps> = ({ name, value, isTotal = false, isSubHeader = false }) => (
+const Row: React.FC<RowProps> = ({ name, value, isTotal = false, isSubHeader = false, indent = false }) => (
   <div className={`flex justify-between py-1 ml-4 
     ${isTotal ? 'font-bold border-t border-slate-400 mt-2 pt-2 text-slate-900' : 'text-slate-600'} 
     ${isSubHeader ? 'font-semibold text-slate-700 mt-2 italic' : ''}
     page-break-inside-avoid`}>
-    <span className={isSubHeader ? '' : 'pl-4'}>{name}</span>
+    <span className={indent ? 'pl-4' : ''}>{name}</span>
     {isSubHeader ? <span></span> : <span>{value.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>}
   </div>
 );
@@ -104,24 +105,22 @@ const BalanceSheet: React.FC = () => {
     }, 100);
   };
 
-  const renderGroups = (accounts: Account[], defaultCategoryName: string, invert: boolean = false) => {
+  const renderCategorySummaries = (accounts: Account[], invert: boolean = false) => {
     const groups = groupByCategory(accounts);
     const categories = Object.keys(groups).sort();
     
     return categories.map(cat => {
       const groupAccounts = groups[cat];
-      const isDefault = cat.toLowerCase() === defaultCategoryName.toLowerCase();
-      // Only show subheader if there are multiple categories OR the category isn't the default section name
-      const showSubHeader = categories.length > 1 || !isDefault;
+      const total = groupAccounts.reduce((sum, a) => sum + (invert ? (a.credit - a.debit) : (a.debit - a.credit)), 0);
 
       return (
-        <React.Fragment key={cat}>
-          {showSubHeader && <Row name={cat} value={0} isSubHeader />}
-          {groupAccounts.map(a => (
-            <Row key={a.id} name={a.name} value={invert ? (a.credit - a.debit) : (a.debit - a.credit)} />
-          ))}
-        </React.Fragment>
-      )
+        <Row 
+          key={cat} 
+          name={cat} 
+          value={total} 
+          indent
+        />
+      );
     });
   }
 
@@ -177,11 +176,11 @@ const BalanceSheet: React.FC = () => {
             <SectionHeader title="Assets" />
             
             <SubHeader title="Current Assets" />
-            {renderGroups(currentAssets, 'Current Assets')}
+            {renderCategorySummaries(currentAssets)}
             <Row name="Total Current Assets" value={totalCurrentAssets} isTotal />
 
             <SubHeader title="Non-Current Assets" />
-            {renderGroups(nonCurrentAssets, 'Non-Current Assets')}
+            {renderCategorySummaries(nonCurrentAssets)}
             <Row name="Total Non-Current Assets" value={totalNonCurrentAssets} isTotal />
 
             <div className="mt-8 pt-4 border-t-4 border-slate-900 page-break-inside-avoid">
@@ -197,11 +196,11 @@ const BalanceSheet: React.FC = () => {
             <SectionHeader title="Liabilities" />
             
             <SubHeader title="Current Liabilities" />
-            {renderGroups(currentLiabilities, 'Current Liabilities', true)}
+            {renderCategorySummaries(currentLiabilities, true)}
             <Row name="Total Current Liabilities" value={totalCurrentLiabilities} isTotal />
 
             <SubHeader title="Non-Current Liabilities" />
-            {renderGroups(nonCurrentLiabilities, 'Non-Current Liabilities', true)}
+            {renderCategorySummaries(nonCurrentLiabilities, true)}
             <Row name="Total Non-Current Liabilities" value={totalNonCurrentLiabilities} isTotal />
             
             <div className="mt-4 pt-2 border-t border-slate-300 page-break-inside-avoid">
@@ -212,8 +211,8 @@ const BalanceSheet: React.FC = () => {
             </div>
 
             <SectionHeader title="Equity" />
-            {renderGroups(equityAccounts, 'Equity', true)}
-            <Row name="Current Year Earnings" value={currentPeriodEarnings} />
+            {renderCategorySummaries(equityAccounts, true)}
+            <Row name="Current Year Earnings" value={currentPeriodEarnings} indent />
             <Row name="Total Equity" value={totalEquity} isTotal />
 
             <div className="mt-8 pt-4 border-t-4 border-slate-900 page-break-inside-avoid">

@@ -44,9 +44,9 @@ const IncomeStatement: React.FC = () => {
 
   // Grouping Logic
   const revenues = state.ledger.filter(a => a.type === AccountType.REVENUE);
-  const costOfSales = state.ledger.filter(a => a.category === 'Cost of Sales');
-  // Operating expenses are usually everything else, but lets be safe with types
-  const operatingExpenses = state.ledger.filter(a => a.type === AccountType.EXPENSE && a.category !== 'Cost of Sales');
+  const costOfSales = state.ledger.filter(a => a.category === 'Cost of Sales' || a.category === 'Cost of Goods Sold');
+  // Operating expenses are everything else that is an expense
+  const operatingExpenses = state.ledger.filter(a => a.type === AccountType.EXPENSE && a.category !== 'Cost of Sales' && a.category !== 'Cost of Goods Sold');
 
   const totalRevenue = revenues.reduce((sum, a) => sum + (a.credit - a.debit), 0);
   const totalCostOfSales = costOfSales.reduce((sum, a) => sum + (a.debit - a.credit), 0);
@@ -56,31 +56,24 @@ const IncomeStatement: React.FC = () => {
 
   // Grouped Data
   const revenueGroups = useMemo(() => groupByCategory(revenues), [revenues]);
+  const costOfSalesGroups = useMemo(() => groupByCategory(costOfSales), [costOfSales]);
   const expenseGroups = useMemo(() => groupByCategory(operatingExpenses), [operatingExpenses]);
 
-  const renderAccountGroups = (groups: Record<string, Account[]>, parentTotal: number, invertSign: boolean = false) => {
+  const renderCategorySummaries = (groups: Record<string, Account[]>, invertSign: boolean = false) => {
     const categories = Object.keys(groups).sort();
-    
-    // If only one category exists and it matches the section name (roughly), don't show subheader to avoid redundancy
-    // But for "Operating Expenses" section, categories might be "Marketing", "Rent".
     
     return categories.map(cat => {
       const accounts = groups[cat];
-      const showSubHeader = categories.length > 1; 
+      const total = accounts.reduce((sum, a) => sum + (invertSign ? (a.credit - a.debit) : (a.debit - a.credit)), 0);
 
       return (
-        <React.Fragment key={cat}>
-          {showSubHeader && <Row name={cat} isSubHeader currency={state.currencySign} />}
-          {accounts.map(a => (
-            <Row 
-              key={a.id} 
-              name={a.name} 
-              value={invertSign ? (a.credit - a.debit) : (a.debit - a.credit)} 
-              indent 
-              currency={state.currencySign} 
-            />
-          ))}
-        </React.Fragment>
+        <Row 
+          key={cat} 
+          name={cat} 
+          value={total} 
+          indent 
+          currency={state.currencySign} 
+        />
       );
     });
   };
@@ -119,13 +112,11 @@ const IncomeStatement: React.FC = () => {
         <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-lg print:shadow-none print:p-0 print:border-none">
           <div className="space-y-1">
             <Row name="Revenue" isHeader currency={state.currencySign} />
-            {renderAccountGroups(revenueGroups, totalRevenue, true)}
+            {renderCategorySummaries(revenueGroups, true)}
             <Row name="Total Revenue" value={totalRevenue} isTotal currency={state.currencySign} />
 
             <Row name="Cost of Goods Sold" isHeader currency={state.currencySign} />
-            {costOfSales.map(c => (
-              <Row key={c.id} name={c.name} value={c.debit - c.credit} indent currency={state.currencySign} />
-            ))}
+            {renderCategorySummaries(costOfSalesGroups, false)}
             <Row name="Total Cost of Goods Sold" value={totalCostOfSales} isTotal currency={state.currencySign} />
 
             <div className="py-4 page-break-inside-avoid">
@@ -136,7 +127,7 @@ const IncomeStatement: React.FC = () => {
             </div>
 
             <Row name="Operating Expenses" isHeader currency={state.currencySign} />
-            {renderAccountGroups(expenseGroups, totalOperatingExpenses, false)}
+            {renderCategorySummaries(expenseGroups, false)}
             <Row name="Total Operating Expenses" value={totalOperatingExpenses} isTotal currency={state.currencySign} />
 
             <div className="py-6 mt-4 page-break-inside-avoid">
