@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LedgerLens AI</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+      body {
+        font-family: 'Inter', sans-serif;
+        background-color: #f8fafc;
+      }
+      /* Custom scrollbar for table containers */
+      .custom-scrollbar::-webkit-scrollbar {
+        height: 8px;
+        width: 8px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: #f1f5f9;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+      }
+      
+      /* PDF Export Mode Styles - Mimics Print Styles but for html2pdf capture */
+      .pdf-export-mode {
+        background-color: white !important;
+        color: black !important;
+        padding: 20px !important;
+      }
+
+      .pdf-export-mode .print\:block {
+        display: block !important;
+      }
+
+      .pdf-export-mode .print\:hidden {
+        display: none !important;
+      }
+
+      .pdf-export-mode .print\:shadow-none {
+        box-shadow: none !important;
+      }
+
+      .pdf-export-mode .print\:border-none {
+        border: none !important;
+      }
+
+      .pdf-export-mode .print\:p-0 {
+        padding: 0 !important;
+      }
+
+      .pdf-export-mode input, 
+      .pdf-export-mode textarea, 
+      .pdf-export-mode select {
+        border: none !important;
+        background: transparent !important;
+        padding: 0 !important;
+        resize: none !important;
+        box-shadow: none !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        color: black !important;
+        font-weight: 500 !important;
+      }
+      
+      .pdf-export-mode input::placeholder, 
+      .pdf-export-mode textarea::placeholder {
+        color: transparent !important;
+      }
+
+      /* Print Styles for PDF Export (Native Print Fallback) */
+      @media print {
+        @page {
+          margin: 1.5cm;
+          size: auto;
+        }
+        
+        body {
+          background-color: white !important;
+          color: black !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+
+        /* Hide Sidebar, Navigation, and No-Print elements */
+        #app-sidebar, .no-print {
+          display: none !important;
+        }
+
+        /* Reset Main Layout for Print */
+        #app-main {
+          display: block !important;
+          position: static !important;
+          width: 100% !important;
+          height: auto !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          overflow: visible !important;
+        }
+
+        main {
+          padding: 0 !important;
+          margin: 0 !important;
+          overflow: visible !important;
+          height: auto !important;
+        }
+
+        /* Flatten Inputs for Print */
+        input, textarea, select {
+          border: none !important;
+          background: transparent !important;
+          padding: 0 !important;
+          resize: none !important;
+          box-shadow: none !important;
+          appearance: none !important;
+          -webkit-appearance: none !important;
+          color: black !important;
+          font-weight: 500 !important;
+        }
+        
+        /* Hide placeholders */
+        input::placeholder, textarea::placeholder {
+          color: transparent !important;
+        }
+
+        /* Ensure Report Containers expand to full width and remove shadows */
+        .max-w-4xl, .max-w-5xl {
+          max-width: none !important;
+          width: 100% !important;
+          margin: 0 !important;
+        }
+        
+        .shadow-lg, .shadow-md, .shadow-sm {
+          box-shadow: none !important;
+          border: none !important;
+        }
+        
+        /* Better border contrast */
+        .border-slate-200, .border-slate-100 {
+          border-color: #cbd5e1 !important;
+        }
+
+        /* Ensure text colors are legible */
+        .text-slate-500, .text-slate-400, .text-slate-600 {
+          color: #334155 !important;
+        }
+        
+        /* Page Breaks */
+        .page-break-inside-avoid {
+          break-inside: avoid;
+        }
+        
+        h2, h3 {
+          break-after: avoid;
+        }
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.1/",
+    "react/": "https://aistudiocdn.com/react@^19.2.1/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.31.0",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.556.0",
+    "react-markdown": "https://aistudiocdn.com/react-markdown@^10.1.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.1",
+    "react-router-dom": "https://aistudiocdn.com/react-router-dom@^7.10.1"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
