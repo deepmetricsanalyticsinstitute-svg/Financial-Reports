@@ -18,15 +18,35 @@ const ChangesInEquity: React.FC = () => {
                     expenses.reduce((sum, a) => sum + (a.debit - a.credit), 0);
 
   // 2. Identify Equity Accounts
-  const capitalAccount = state.ledger.find(a => a.type === AccountType.EQUITY && a.name.includes("Capital"));
-  const retainedEarningsAccount = state.ledger.find(a => a.type === AccountType.EQUITY && a.name.includes("Retained Earnings"));
+  // We use flexible matching to find standard equity accounts
+  const capitalAccount = state.ledger.find(a => 
+    a.type === AccountType.EQUITY && (a.name.toLowerCase().includes("capital") || a.name.toLowerCase().includes("share"))
+  );
   
-  const capitalBalance = capitalAccount ? (capitalAccount.credit - capitalAccount.debit) : 0;
-  const openingRetainedEarnings = retainedEarningsAccount ? (retainedEarningsAccount.credit - retainedEarningsAccount.debit) : 0;
-  const dividends = 0; 
+  const retainedEarningsAccount = state.ledger.find(a => 
+    a.type === AccountType.EQUITY && (a.name.toLowerCase().includes("retained") || a.name.toLowerCase().includes("earnings"))
+  );
 
+  // Look for Dividends or Drawings (Equity accounts that typically have a Debit balance)
+  const dividendsAccount = state.ledger.find(a => 
+    a.type === AccountType.EQUITY && 
+    (a.name.toLowerCase().includes("dividend") || a.name.toLowerCase().includes("drawing"))
+  );
+  
+  // Balances
+  const capitalBalance = capitalAccount ? (capitalAccount.credit - capitalAccount.debit) : 0;
+  
+  // Assume the ledger balance for Retained Earnings is the Opening Balance for the period
+  const openingRetainedEarnings = retainedEarningsAccount ? (retainedEarningsAccount.credit - retainedEarningsAccount.debit) : 0;
+  
+  // Dividends reduce equity, so we treat the debit balance as the positive amount of dividends paid
+  const dividends = dividendsAccount ? (dividendsAccount.debit - dividendsAccount.credit) : 0; 
+
+  // Calculation: Closing RE = Opening RE + Net Income - Dividends
   const closingRetainedEarnings = openingRetainedEarnings + netIncome - dividends;
-  const totalEquity = capitalBalance + closingRetainedEarnings;
+  
+  const totalEquityOpening = capitalBalance + openingRetainedEarnings;
+  const totalEquityEnding = capitalBalance + closingRetainedEarnings;
 
   const cs = state.currencySign;
 
@@ -76,19 +96,27 @@ const ChangesInEquity: React.FC = () => {
                   <td className="px-6 py-4 font-medium text-slate-700">Balance at beginning of period</td>
                   <td className="px-6 py-4 text-right">{cs}{capitalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   <td className="px-6 py-4 text-right">{cs}{openingRetainedEarnings.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-right font-medium bg-slate-50 print:bg-transparent">{cs}{(capitalBalance + openingRetainedEarnings).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-right font-medium bg-slate-50 print:bg-transparent">{cs}{totalEquityOpening.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                 </tr>
                 <tr>
                   <td className="px-6 py-4 font-medium text-slate-700">Net Income for the period</td>
                   <td className="px-6 py-4 text-right">-</td>
-                  <td className="px-6 py-4 text-right text-emerald-600 print:text-black">{cs}{netIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-right font-medium text-emerald-600 bg-slate-50 print:bg-transparent print:text-black">{cs}{netIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td className={`px-6 py-4 text-right ${netIncome >= 0 ? 'text-emerald-600' : 'text-rose-600'} print:text-black`}>
+                    {cs}{netIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </td>
+                  <td className={`px-6 py-4 text-right font-medium bg-slate-50 print:bg-transparent ${netIncome >= 0 ? 'text-emerald-600' : 'text-rose-600'} print:text-black`}>
+                    {cs}{netIncome.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </td>
                 </tr>
                 <tr>
                   <td className="px-6 py-4 font-medium text-slate-700">Dividends / Drawings</td>
                   <td className="px-6 py-4 text-right">-</td>
-                  <td className="px-6 py-4 text-right">{cs}{dividends.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-right font-medium bg-slate-50 print:bg-transparent">{cs}{dividends.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-right text-rose-600 print:text-black">
+                    {dividends !== 0 ? `(${cs}${dividends.toLocaleString('en-US', { minimumFractionDigits: 2 })})` : '-'}
+                  </td>
+                  <td className="px-6 py-4 text-right font-medium bg-slate-50 print:bg-transparent text-rose-600 print:text-black">
+                    {dividends !== 0 ? `(${cs}${dividends.toLocaleString('en-US', { minimumFractionDigits: 2 })})` : '-'}
+                  </td>
                 </tr>
               </tbody>
               <tfoot className="bg-slate-50 font-bold text-slate-900 border-t-2 border-slate-300 print:bg-transparent print:border-t-2 print:border-slate-800">
@@ -96,7 +124,7 @@ const ChangesInEquity: React.FC = () => {
                   <td className="px-6 py-4">Balance at end of period</td>
                   <td className="px-6 py-4 text-right">{cs}{capitalBalance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                   <td className="px-6 py-4 text-right">{cs}{closingRetainedEarnings.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
-                  <td className="px-6 py-4 text-right bg-slate-100 print:bg-transparent">{cs}{totalEquity.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td className="px-6 py-4 text-right bg-slate-100 print:bg-transparent">{cs}{totalEquityEnding.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
                 </tr>
               </tfoot>
             </table>
@@ -104,7 +132,7 @@ const ChangesInEquity: React.FC = () => {
         </div>
 
         <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-600 print:hidden">
-          <p><strong>Note:</strong> This statement assumes the ledger balance for "Retained Earnings" represents the opening balance. Net Income is calculated from the current Income Statement and added to this balance.</p>
+          <p><strong>Note:</strong> This statement assumes the ledger balance for "Retained Earnings" represents the opening balance. Net Income is calculated from the current Income Statement and added to this balance, while Dividends/Drawings are subtracted.</p>
         </div>
       </div>
 

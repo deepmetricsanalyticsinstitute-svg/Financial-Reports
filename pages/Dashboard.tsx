@@ -12,7 +12,7 @@ import {
   ResponsiveContainer,
   Cell
 } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, Settings, X, Plus } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Wallet, Building2, Settings, X, Plus, Activity, Scale, Percent, AlertCircle } from 'lucide-react';
 
 const MetricCard = ({ title, value, subtext, icon: Icon, colorClass, currency }: any) => (
   <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
@@ -28,13 +28,46 @@ const MetricCard = ({ title, value, subtext, icon: Icon, colorClass, currency }:
   </div>
 );
 
+const RatioCard = ({ title, value, benchmark, description, icon: Icon, colorClass }: any) => (
+  <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-between h-full">
+    <div>
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-500 uppercase tracking-wide">{title}</h4>
+          <p className="text-3xl font-bold text-slate-900 mt-1">{value}</p>
+        </div>
+        <div className={`p-2 rounded-lg ${colorClass} bg-opacity-10`}>
+          <Icon className={`w-5 h-5 ${colorClass.replace('bg-', 'text-')}`} />
+        </div>
+      </div>
+      <p className="text-xs text-slate-500 leading-relaxed mb-3">{description}</p>
+    </div>
+    <div className="pt-3 border-t border-slate-50">
+      <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
+        <span className="px-1.5 py-0.5 bg-slate-100 rounded text-slate-600">Target: {benchmark}</span>
+      </div>
+    </div>
+  </div>
+);
+
+// Helpers for classification
+const isCurrentAsset = (cat: string) => {
+  const c = (cat || '').toLowerCase();
+  return c.includes('current') || c.includes('cash') || c.includes('bank') || c.includes('receivable') || c.includes('inventory') || c.includes('stock') || c.includes('prepaid');
+};
+
+const isCurrentLiability = (cat: string) => {
+  const c = (cat || '').toLowerCase();
+  return c.includes('current') || c.includes('payable') || c.includes('tax') || c.includes('vat') || c.includes('gst') || c.includes('accrued') || c.includes('short');
+};
+
 const Dashboard: React.FC = () => {
   const { state, updateCompanyName, updateBaseCurrency, updatePeriod, updateExchangeRate, addCurrency, updateCurrencySign } = useFinancials();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [showRateModal, setShowRateModal] = useState(false);
   const [newCurrency, setNewCurrency] = useState({ code: '', name: '', symbol: '', rate: 1.0 });
 
-  // Calculations
+  // Basic Calculations
   const totalRevenue = state.ledger
     .filter(a => a.type === AccountType.REVENUE)
     .reduce((sum, a) => sum + (a.credit - a.debit), 0);
@@ -55,6 +88,33 @@ const Dashboard: React.FC = () => {
   const totalLiabilities = state.ledger
     .filter(a => a.type === AccountType.LIABILITY)
     .reduce((sum, a) => sum + (a.credit - a.debit), 0);
+
+  // Ratio Specific Calculations
+  // 1. Current Assets & Liabilities
+  const currentAssets = state.ledger
+    .filter(a => a.type === AccountType.ASSET && isCurrentAsset(a.category))
+    .reduce((sum, a) => sum + (a.debit - a.credit), 0);
+
+  const currentLiabilities = state.ledger
+    .filter(a => a.type === AccountType.LIABILITY && isCurrentLiability(a.category))
+    .reduce((sum, a) => sum + (a.credit - a.debit), 0);
+
+  // 2. Inventory (for Quick Ratio)
+  const inventory = state.ledger
+    .filter(a => a.type === AccountType.ASSET && (a.name.toLowerCase().includes('inventory') || a.category.toLowerCase().includes('inventory')))
+    .reduce((sum, a) => sum + (a.debit - a.credit), 0);
+
+  // 3. Total Equity (Book Equity + Current Net Income)
+  const bookEquity = state.ledger
+    .filter(a => a.type === AccountType.EQUITY)
+    .reduce((sum, a) => sum + (a.credit - a.debit), 0);
+  const totalEquity = bookEquity + netIncome;
+
+  // Calculate Ratios
+  const currentRatio = currentLiabilities !== 0 ? (currentAssets / currentLiabilities) : 0;
+  const quickRatio = currentLiabilities !== 0 ? ((currentAssets - inventory) / currentLiabilities) : 0;
+  const debtToEquityRatio = totalEquity !== 0 ? (totalLiabilities / totalEquity) : 0;
+  const profitMargin = totalRevenue !== 0 ? ((netIncome / totalRevenue) * 100) : 0;
 
   // Chart Data
   const incomeData = [
@@ -160,7 +220,7 @@ const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <MetricCard 
           title="Net Income" 
-          value={netIncome.toLocaleString()} 
+          value={netIncome.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} 
           subtext={netIncome > 0 ? "+12% vs last month" : "-5% vs last month"}
           icon={TrendingUp}
           colorClass="bg-emerald-500 text-emerald-500"
@@ -168,7 +228,7 @@ const Dashboard: React.FC = () => {
         />
         <MetricCard 
           title="Total Revenue" 
-          value={totalRevenue.toLocaleString()} 
+          value={totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} 
           subtext="Based on invoiced sales"
           icon={DollarSign}
           colorClass="bg-blue-500 text-blue-500"
@@ -176,7 +236,7 @@ const Dashboard: React.FC = () => {
         />
         <MetricCard 
           title="Total Assets" 
-          value={totalAssets.toLocaleString()} 
+          value={totalAssets.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} 
           subtext="Current & Non-Current"
           icon={Wallet}
           colorClass="bg-indigo-500 text-indigo-500"
@@ -184,12 +244,53 @@ const Dashboard: React.FC = () => {
         />
         <MetricCard 
           title="Total Expenses" 
-          value={totalExpenses.toLocaleString()} 
+          value={totalExpenses.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} 
           subtext="Operating costs"
           icon={TrendingDown}
           colorClass="bg-rose-500 text-rose-500"
           currency={state.currencySign}
         />
+      </div>
+
+      {/* Financial Ratios Section */}
+      <div>
+        <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+          <Activity className="w-5 h-5 text-indigo-600" /> Key Financial Ratios
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <RatioCard 
+            title="Current Ratio"
+            value={currentRatio.toFixed(2)}
+            benchmark="> 1.5"
+            description="Measures ability to pay short-term obligations with short-term assets."
+            icon={Scale}
+            colorClass="bg-blue-500 text-blue-500"
+          />
+          <RatioCard 
+            title="Quick Ratio"
+            value={quickRatio.toFixed(2)}
+            benchmark="> 1.0"
+            description="Acid-test. Similar to Current Ratio but excludes inventory."
+            icon={AlertCircle}
+            colorClass="bg-purple-500 text-purple-500"
+          />
+          <RatioCard 
+            title="Debt-to-Equity"
+            value={debtToEquityRatio.toFixed(2)}
+            benchmark="< 2.0"
+            description="Indicates the relative proportion of shareholder's equity and debt used to finance assets."
+            icon={Activity}
+            colorClass="bg-orange-500 text-orange-500"
+          />
+          <RatioCard 
+            title="Profit Margin"
+            value={`${profitMargin.toFixed(1)}%`}
+            benchmark="> 10%"
+            description="Represents the percentage of sales that has turned into profits."
+            icon={Percent}
+            colorClass="bg-emerald-500 text-emerald-500"
+          />
+        </div>
       </div>
 
       {/* Charts Section */}

@@ -1,6 +1,7 @@
 
+
 import React, { createContext, useContext, useState, ReactNode } from 'react';
-import { Account, AccountType, FinancialContextType, FinancialState, Transaction, Currency } from '../types';
+import { Account, AccountType, FinancialContextType, FinancialState, Transaction, Currency, ReportTemplate, JournalTemplate, JournalLineTemplate, CustomGroup } from '../types';
 
 const INITIAL_LEDGER: Account[] = [
   // Assets
@@ -60,7 +61,11 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     companyName: 'Acme Corp.',
     currencySign: '$',
     baseCurrency: 'USD',
-    currencies: INITIAL_CURRENCIES
+    currencies: INITIAL_CURRENCIES,
+    templates: [],
+    journalTemplates: [],
+    journalLineTemplates: [],
+    customGroups: []
   });
 
   const updateAccountBalance = (id: string, debit: number, credit: number) => {
@@ -140,6 +145,15 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
       ...prev,
       ledger: prev.ledger.map(acc => 
         acc.id === id ? { ...acc, note } : acc
+      )
+    }));
+  };
+
+  const updateAccountDetails = (id: string, updates: Partial<Account>) => {
+    setState(prev => ({
+      ...prev,
+      ledger: prev.ledger.map(acc => 
+        acc.id === id ? { ...acc, ...updates } : acc
       )
     }));
   };
@@ -265,6 +279,74 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     });
   };
 
+  const addTemplate = (template: ReportTemplate) => {
+    setState(prev => ({
+      ...prev,
+      templates: [...prev.templates, template]
+    }));
+  };
+
+  const deleteTemplate = (id: string) => {
+    setState(prev => ({
+      ...prev,
+      templates: prev.templates.filter(t => t.id !== id)
+    }));
+  };
+
+  const addJournalTemplate = (template: JournalTemplate) => {
+    setState(prev => ({
+      ...prev,
+      journalTemplates: [...prev.journalTemplates, template]
+    }));
+  };
+
+  const deleteJournalTemplate = (id: string) => {
+    setState(prev => ({
+      ...prev,
+      journalTemplates: prev.journalTemplates.filter(t => t.id !== id)
+    }));
+  };
+
+  const addJournalLineTemplate = (template: JournalLineTemplate) => {
+    setState(prev => ({
+      ...prev,
+      journalLineTemplates: [...prev.journalLineTemplates, template]
+    }));
+  };
+
+  const deleteJournalLineTemplate = (id: string) => {
+    setState(prev => ({
+      ...prev,
+      journalLineTemplates: prev.journalLineTemplates.filter(t => t.id !== id)
+    }));
+  };
+
+  // Custom Group Methods
+  const addCustomGroup = (name: string) => {
+    const newGroup: CustomGroup = { id: `group-${Date.now()}`, name };
+    setState(prev => ({
+      ...prev,
+      customGroups: [...prev.customGroups, newGroup]
+    }));
+  };
+
+  const updateCustomGroup = (id: string, name: string) => {
+    setState(prev => ({
+      ...prev,
+      customGroups: prev.customGroups.map(g => g.id === id ? { ...g, name } : g)
+    }));
+  };
+
+  const deleteCustomGroup = (id: string) => {
+    setState(prev => ({
+      ...prev,
+      customGroups: prev.customGroups.filter(g => g.id !== id),
+      // Optional: Remove group assignment from accounts?
+      // For now, let's reset account customGroupId if it matches
+      ledger: prev.ledger.map(acc => acc.customGroupId === id ? { ...acc, customGroupId: undefined } : acc)
+    }));
+  };
+
   const resetData = () => {
     setState({
       ledger: INITIAL_LEDGER,
@@ -273,7 +355,11 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
       companyName: 'Acme Corp.',
       currencySign: '$',
       baseCurrency: 'USD',
-      currencies: INITIAL_CURRENCIES
+      currencies: INITIAL_CURRENCIES,
+      templates: [],
+      journalTemplates: [],
+      journalLineTemplates: [],
+      customGroups: []
     });
   };
 
@@ -287,12 +373,22 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
       updateCurrencySign,
       updatePeriod,
       updateAccountNote,
+      updateAccountDetails,
       addTransaction,
       editTransaction,
       deleteTransaction,
       updateBaseCurrency,
       updateExchangeRate,
-      addCurrency
+      addCurrency,
+      addTemplate,
+      deleteTemplate,
+      addJournalTemplate,
+      deleteJournalTemplate,
+      addJournalLineTemplate,
+      deleteJournalLineTemplate,
+      addCustomGroup,
+      updateCustomGroup,
+      deleteCustomGroup
     }}>
       {children}
     </FinancialContext.Provider>

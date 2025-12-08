@@ -4,12 +4,14 @@ import { Bot, Sparkles, Loader2, ChevronRight } from 'lucide-react';
 import { analyzeFinancials } from '../services/geminiService';
 import { useFinancials } from '../context/FinancialContext';
 import ReactMarkdown from 'react-markdown';
+import { Account } from '../types';
 
 interface AIAnalysisProps {
   reportType: string;
+  customLedger?: Account[];
 }
 
-const AIAnalysis: React.FC<AIAnalysisProps> = ({ reportType }) => {
+const AIAnalysis: React.FC<AIAnalysisProps> = ({ reportType, customLedger }) => {
   const { state } = useFinancials();
   const [analysis, setAnalysis] = useState<string>("");
   const [loading, setLoading] = useState(false);
@@ -18,7 +20,8 @@ const AIAnalysis: React.FC<AIAnalysisProps> = ({ reportType }) => {
   const handleAnalyze = async () => {
     setLoading(true);
     setIsOpen(true);
-    const result = await analyzeFinancials(state.ledger, reportType, state.companyName, state.period);
+    const ledgerToUse = customLedger || state.ledger;
+    const result = await analyzeFinancials(ledgerToUse, reportType, state.companyName, state.period);
     setAnalysis(result);
     setLoading(false);
   };

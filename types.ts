@@ -1,10 +1,16 @@
 
+
 export enum AccountType {
   ASSET = 'Asset',
   LIABILITY = 'Liability',
   EQUITY = 'Equity',
   REVENUE = 'Revenue',
   EXPENSE = 'Expense'
+}
+
+export interface CustomGroup {
+  id: string;
+  name: string;
 }
 
 export interface Account {
@@ -16,6 +22,7 @@ export interface Account {
   credit: number;
   category: string; // e.g., "Current Assets", "Operating Expenses"
   note?: string; // New field for account notes
+  customGroupId?: string; // Link to CustomGroup
 }
 
 export interface Currency {
@@ -47,6 +54,36 @@ export interface BankTransaction {
   matchedTransactionId?: string; // ID of the matching ledger transaction
 }
 
+export interface ReportTemplate {
+  id: string;
+  name: string;
+  reportType: 'IncomeStatement' | 'BalanceSheet';
+  hiddenCategories: string[];
+}
+
+export interface JournalTemplateLine {
+  accountId: string;
+  description: string;
+  debit: number;
+  credit: number;
+}
+
+export interface JournalTemplate {
+  id: string;
+  name: string;
+  memo: string;
+  lines: JournalTemplateLine[];
+}
+
+export interface JournalLineTemplate {
+  id: string;
+  name: string;
+  accountId: string;
+  description: string;
+  debit: number;
+  credit: number;
+}
+
 export interface FinancialState {
   ledger: Account[];
   transactions: Transaction[];
@@ -55,6 +92,10 @@ export interface FinancialState {
   currencySign: string; // Display symbol for Base Currency
   baseCurrency: string; // Code e.g., 'USD'
   currencies: Currency[];
+  templates: ReportTemplate[];
+  journalTemplates: JournalTemplate[];
+  journalLineTemplates: JournalLineTemplate[];
+  customGroups: CustomGroup[];
 }
 
 export type FinancialContextType = {
@@ -66,6 +107,7 @@ export type FinancialContextType = {
   updateCurrencySign: (sign: string) => void; // Deprecated but kept for compatibility, updates symbol of base
   updatePeriod: (date: string) => void;
   updateAccountNote: (id: string, note: string) => void;
+  updateAccountDetails: (id: string, updates: Partial<Account>) => void;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
   editTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;
@@ -74,4 +116,21 @@ export type FinancialContextType = {
   updateBaseCurrency: (code: string) => void;
   updateExchangeRate: (code: string, rate: number) => void;
   addCurrency: (currency: Currency) => void;
+
+  // Template Methods
+  addTemplate: (template: ReportTemplate) => void;
+  deleteTemplate: (id: string) => void;
+
+  // Journal Template Methods
+  addJournalTemplate: (template: JournalTemplate) => void;
+  deleteJournalTemplate: (id: string) => void;
+
+  // Journal Line Template Methods
+  addJournalLineTemplate: (template: JournalLineTemplate) => void;
+  deleteJournalLineTemplate: (id: string) => void;
+
+  // Custom Group Methods
+  addCustomGroup: (name: string) => void;
+  updateCustomGroup: (id: string, name: string) => void;
+  deleteCustomGroup: (id: string) => void;
 };
