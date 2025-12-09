@@ -100,6 +100,7 @@ export interface FinancialState {
 
 export type FinancialContextType = {
   state: FinancialState;
+  addAccount: (account: Account) => void;
   updateAccountBalance: (id: string, debit: number, credit: number) => void;
   resetData: () => void;
   importLedger: (ledger: Account[], transactions?: Transaction[]) => void;
@@ -108,6 +109,7 @@ export type FinancialContextType = {
   updatePeriod: (date: string) => void;
   updateAccountNote: (id: string, note: string) => void;
   updateAccountDetails: (id: string, updates: Partial<Account>) => void;
+  bulkUpdateAccounts: (ids: string[], updates: Partial<Account>) => void;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
   editTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string) => void;

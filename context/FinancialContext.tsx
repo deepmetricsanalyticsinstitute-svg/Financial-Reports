@@ -1,5 +1,3 @@
-
-
 import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Account, AccountType, FinancialContextType, FinancialState, Transaction, Currency, ReportTemplate, JournalTemplate, JournalLineTemplate, CustomGroup } from '../types';
 
@@ -49,6 +47,7 @@ const INITIAL_CURRENCIES: Currency[] = [
   { code: 'JPY', name: 'Japanese Yen', symbol: '¥', rate: 0.0068 },
   { code: 'CNY', name: 'Chinese Yuan', symbol: '¥', rate: 0.14 },
   { code: 'INR', name: 'Indian Rupee', symbol: '₹', rate: 0.012 },
+  { code: 'GHC', name: 'Ghanaian Cedi', symbol: '₵', rate: 0.08 },
 ];
 
 const FinancialContext = createContext<FinancialContextType | undefined>(undefined);
@@ -67,6 +66,13 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     journalLineTemplates: [],
     customGroups: []
   });
+
+  const addAccount = (account: Account) => {
+    setState(prev => ({
+      ...prev,
+      ledger: [...prev.ledger, account]
+    }));
+  };
 
   const updateAccountBalance = (id: string, debit: number, credit: number) => {
     setState(prev => ({
@@ -158,8 +164,18 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     }));
   };
 
+  const bulkUpdateAccounts = (ids: string[], updates: Partial<Account>) => {
+    setState(prev => ({
+      ...prev,
+      ledger: prev.ledger.map(acc => 
+        ids.includes(acc.id) ? { ...acc, ...updates } : acc
+      )
+    }));
+  };
+
   const addTransaction = (newTx: Omit<Transaction, 'id'>) => {
-    const transactionId = `manual-${Date.now()}`;
+    // Use a random suffix to avoid ID collisions when saving multiple lines quickly
+    const transactionId = `manual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     // Currency Conversion Logic
     // Input Amount is in originalCurrency
@@ -366,6 +382,7 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
   return (
     <FinancialContext.Provider value={{ 
       state, 
+      addAccount,
       updateAccountBalance, 
       resetData, 
       importLedger, 
@@ -374,6 +391,7 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
       updatePeriod,
       updateAccountNote,
       updateAccountDetails,
+      bulkUpdateAccounts,
       addTransaction,
       editTransaction,
       deleteTransaction,

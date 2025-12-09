@@ -2,8 +2,33 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useFinancials } from '../context/FinancialContext';
 import { AccountType, BankTransaction, Transaction } from '../types';
-import { UploadCloud, CheckCircle2, AlertCircle, ArrowLeftRight, Download, RefreshCw, Plus, Trash2, Edit2, X, Save, ArrowDownLeft, Calculator } from 'lucide-react';
+import { UploadCloud, CheckCircle2, AlertCircle, ArrowLeftRight, Download, RefreshCw, Plus, Trash2, Edit2, X, Save, ArrowDownLeft, Calculator, Wand2 } from 'lucide-react';
 import { parseBankCSVFile, generateBankTemplate } from '../utils/csvHelpers';
+
+// Helper to calculate days difference between two YYYY-MM-DD strings
+const getDaysDiff = (d1: string, d2: string) => {
+  const date1 = new Date(d1).getTime();
+  const date2 = new Date(d2).getTime();
+  if (isNaN(date1) || isNaN(date2)) return 999;
+  return Math.abs(date1 - date2) / (1000 * 3600 * 24);
+};
+
+// Helper to check for word overlap in descriptions
+const getDescriptionMatchScore = (desc1: string, desc2: string) => {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, '').split(/\s+/).filter(w => w.length > 2);
+  const words1 = normalize(desc1);
+  const words2 = normalize(desc2);
+  
+  if (words1.length === 0 || words2.length === 0) return 0;
+  
+  // Count how many words from bank desc appear in ledger desc
+  let matchCount = 0;
+  words1.forEach(w => {
+    if (words2.some(w2 => w2.includes(w) || w.includes(w2))) matchCount++;
+  });
+  
+  return matchCount; // Each matching word adds to score
+};
 
 const BankReconciliation: React.FC = () => {
   const { state, addTransaction, deleteTransaction, editTransaction } = useFinancials();
@@ -46,16 +71,50 @@ const BankReconciliation: React.FC = () => {
   // Auto-Match Logic
   const matchedData = useMemo(() => {
     const matches: { bank: BankTransaction, ledger?: Transaction }[] = [];
+    // We create a copy of ledger transactions to "consume" them as we find matches
     const unmatchedLedger = [...ledgerTransactions];
 
     bankTransactions.forEach(bankItem => {
-      const matchIndex = unmatchedLedger.findIndex(l => Math.abs(l.amount - bankItem.amount) < 0.01);
+      // 1. Filter candidates by Amount (Absolute Match required)
+      const candidates = unmatchedLedger.filter(l => Math.abs(l.amount - bankItem.amount) < 0.01);
       
-      if (matchIndex >= 0) {
-        matches.push({ bank: bankItem, ledger: unmatchedLedger[matchIndex] });
-        unmatchedLedger.splice(matchIndex, 1); // Remove so it's not matched twice
+      let bestMatch: Transaction | null = null;
+      let highestScore = -Infinity;
+
+      candidates.forEach(candidate => {
+         let score = 0;
+         
+         // 2. Score by Date Proximity
+         const diffDays = getDaysDiff(candidate.date, bankItem.date);
+         
+         if (diffDays === 0) score += 20;        // Exact date
+         else if (diffDays <= 2) score += 10;    // Within 2 days
+         else if (diffDays <= 5) score += 5;     // Within 5 days
+         else if (diffDays <= 7) score += 1;     // Within a week
+         else score -= 10;                       // Penalize if date is far off
+
+         // 3. Score by Description Similarity
+         const textScore = getDescriptionMatchScore(bankItem.description, candidate.description);
+         score += (textScore * 5); // Weight text matches reasonably high
+
+         if (score > highestScore) {
+            highestScore = score;
+            bestMatch = candidate;
+         }
+      });
+
+      // Threshold: 
+      // We accept a match if the score is positive.
+      // E.g., Same amount + Date within 5 days (Score 5) -> Match
+      // E.g., Same amount + Date far off (-10) + No text match (0) -> Score -10 -> No Match
+      if (bestMatch && highestScore > 0) {
+         matches.push({ bank: bankItem, ledger: bestMatch });
+         
+         // Remove this ledger item from the pool so it can't be matched again
+         const idx = unmatchedLedger.indexOf(bestMatch);
+         if (idx > -1) unmatchedLedger.splice(idx, 1);
       } else {
-        matches.push({ bank: bankItem });
+         matches.push({ bank: bankItem });
       }
     });
 
@@ -247,7 +306,12 @@ const BankReconciliation: React.FC = () => {
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                    <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                      <h3 className="font-bold text-slate-800">Matching Results</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-slate-800">Matching Results</h3>
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full flex items-center gap-1">
+                          <Wand2 className="w-3 h-3" /> Auto-Match Active
+                        </span>
+                      </div>
                       <button 
                         onClick={() => setBankTransactions([])}
                         className="text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1"
@@ -276,9 +340,9 @@ const BankReconciliation: React.FC = () => {
                              <td className="px-4 py-3 text-right font-mono">{state.currencySign}{item.bank.amount.toFixed(2)}</td>
                              <td className="px-4 py-3 text-center">
                                {item.ledger ? (
-                                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800">
+                                 <div className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 cursor-help" title={`Matched with: ${item.ledger.description} (${item.ledger.date})`}>
                                    Matched
-                                 </span>
+                                 </div>
                                ) : (
                                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-800">
                                    Missing
@@ -289,11 +353,14 @@ const BankReconciliation: React.FC = () => {
                                {item.ledger ? (
                                  <div className="flex flex-col">
                                     <div className="flex items-center gap-2">
-                                       <span className="truncate max-w-[150px]">{item.ledger.description}</span>
+                                       <span className="truncate max-w-[150px] text-slate-700" title={item.ledger.description}>
+                                         <span className="font-bold text-xs text-slate-400 mr-1">L:</span>
+                                         {item.ledger.description}
+                                       </span>
                                        <button onClick={() => openEditModal(item.ledger!)} className="text-slate-400 hover:text-indigo-600"><Edit2 className="w-3 h-3" /></button>
                                        <button onClick={() => handleDelete(item.ledger!.id)} className="text-slate-400 hover:text-rose-600"><Trash2 className="w-3 h-3" /></button>
                                     </div>
-                                    <span className="text-slate-400 text-[10px]">{item.ledger.date}</span>
+                                    <span className="text-slate-400 text-[10px] ml-4">{item.ledger.date}</span>
                                  </div>
                                ) : (
                                  <button 

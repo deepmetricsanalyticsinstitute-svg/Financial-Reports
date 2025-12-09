@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
 import { useFinancials } from '../context/FinancialContext';
-import { AccountType } from '../types';
+import { AccountType, Account } from '../types';
 import { 
   BarChart, 
   Bar, 
@@ -63,51 +62,49 @@ const isCurrentLiability = (cat: string) => {
 
 const Dashboard: React.FC = () => {
   const { state, updateCompanyName, updateBaseCurrency, updatePeriod, updateExchangeRate, addCurrency, updateCurrencySign } = useFinancials();
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [showRateModal, setShowRateModal] = useState(false);
   const [newCurrency, setNewCurrency] = useState({ code: '', name: '', symbol: '', rate: 1.0 });
 
   // Basic Calculations
   const totalRevenue = state.ledger
-    .filter(a => a.type === AccountType.REVENUE)
-    .reduce((sum, a) => sum + (a.credit - a.debit), 0);
+    .filter((a: Account) => a.type === AccountType.REVENUE)
+    .reduce((sum: number, a: Account) => sum + (Number(a.credit) - Number(a.debit)), 0);
   
   const expenseAccounts = state.ledger
-    .filter(a => a.type === AccountType.EXPENSE)
-    .sort((a, b) => (b.debit - b.credit) - (a.debit - a.credit));
+    .filter((a: Account) => a.type === AccountType.EXPENSE);
 
   const totalExpenses = expenseAccounts
-    .reduce((sum, a) => sum + (a.debit - a.credit), 0);
+    .reduce((sum: number, a: Account) => sum + (Number(a.debit) - Number(a.credit)), 0);
   
   const netIncome = totalRevenue - totalExpenses;
   
   const totalAssets = state.ledger
-    .filter(a => a.type === AccountType.ASSET)
-    .reduce((sum, a) => sum + (a.debit - a.credit), 0);
+    .filter((a: Account) => a.type === AccountType.ASSET)
+    .reduce((sum: number, a: Account) => sum + (Number(a.debit) - Number(a.credit)), 0);
 
   const totalLiabilities = state.ledger
-    .filter(a => a.type === AccountType.LIABILITY)
-    .reduce((sum, a) => sum + (a.credit - a.debit), 0);
+    .filter((a: Account) => a.type === AccountType.LIABILITY)
+    .reduce((sum: number, a: Account) => sum + (Number(a.credit) - Number(a.debit)), 0);
 
   // Ratio Specific Calculations
   // 1. Current Assets & Liabilities
   const currentAssets = state.ledger
-    .filter(a => a.type === AccountType.ASSET && isCurrentAsset(a.category))
-    .reduce((sum, a) => sum + (a.debit - a.credit), 0);
+    .filter((a: Account) => a.type === AccountType.ASSET && isCurrentAsset(a.category))
+    .reduce((sum: number, a: Account) => sum + (Number(a.debit) - Number(a.credit)), 0);
 
   const currentLiabilities = state.ledger
-    .filter(a => a.type === AccountType.LIABILITY && isCurrentLiability(a.category))
-    .reduce((sum, a) => sum + (a.credit - a.debit), 0);
+    .filter((a: Account) => a.type === AccountType.LIABILITY && isCurrentLiability(a.category))
+    .reduce((sum: number, a: Account) => sum + (Number(a.credit) - Number(a.debit)), 0);
 
   // 2. Inventory (for Quick Ratio)
   const inventory = state.ledger
-    .filter(a => a.type === AccountType.ASSET && (a.name.toLowerCase().includes('inventory') || a.category.toLowerCase().includes('inventory')))
-    .reduce((sum, a) => sum + (a.debit - a.credit), 0);
+    .filter((a: Account) => a.type === AccountType.ASSET && (a.name.toLowerCase().includes('inventory') || a.category.toLowerCase().includes('inventory')))
+    .reduce((sum: number, a: Account) => sum + (Number(a.debit) - Number(a.credit)), 0);
 
   // 3. Total Equity (Book Equity + Current Net Income)
   const bookEquity = state.ledger
-    .filter(a => a.type === AccountType.EQUITY)
-    .reduce((sum, a) => sum + (a.credit - a.debit), 0);
+    .filter((a: Account) => a.type === AccountType.EQUITY)
+    .reduce((sum: number, a: Account) => sum + (Number(a.credit) - Number(a.debit)), 0);
   const totalEquity = bookEquity + netIncome;
 
   // Calculate Ratios
@@ -123,13 +120,19 @@ const Dashboard: React.FC = () => {
     { name: 'Net Income', amount: netIncome }
   ];
 
-  const expenseBreakdown = expenseAccounts.map(a => ({ 
-    id: a.id,
-    name: a.name, 
-    value: a.debit - a.credit,
-    code: a.code,
-    category: a.category
-  }));
+  // Group Expenses by Category for Summary
+  const expenseCategoryMap = expenseAccounts.reduce((acc: Record<string, number>, curr: Account) => {
+    const cat = curr.category || 'Uncategorized';
+    const currentVal = acc[cat] || 0;
+    const debit = Number(curr.debit) || 0;
+    const credit = Number(curr.credit) || 0;
+    acc[cat] = currentVal + (debit - credit);
+    return acc;
+  }, {} as Record<string, number>);
+
+  const expenseSummary = Object.entries(expenseCategoryMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => Number(b.value) - Number(a.value));
   
   const COLORS = ['#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#10b981', '#f59e0b'];
 
@@ -318,45 +321,38 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Expense Breakdown Table */}
+      {/* Expense Summary Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-500">
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
-          <h3 className="text-lg font-semibold text-slate-900">Expense Breakdown Details</h3>
+          <h3 className="text-lg font-semibold text-slate-900">Expense Summary</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-slate-50 text-slate-500 font-medium">
               <tr>
-                <th className="px-6 py-3 w-32">Code</th>
-                <th className="px-6 py-3">Account Name</th>
                 <th className="px-6 py-3">Category</th>
                 <th className="px-6 py-3 text-right">Amount</th>
                 <th className="px-6 py-3 text-right w-32">% Share</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {expenseBreakdown.map((item, index) => {
-                 const percentage = totalExpenses > 0 ? (item.value / totalExpenses) * 100 : 0;
-                 const isActive = activeIndex === index;
+              {expenseSummary.map((item, index: number) => {
+                 const itemValue = Number(item.value);
+                 const percentage = totalExpenses > 0 ? (itemValue / totalExpenses) * 100 : 0;
                  return (
                   <tr 
-                    key={item.id} 
-                    className={`transition-all duration-200 cursor-pointer ${
-                      isActive ? 'bg-indigo-50 shadow-inner' : 'hover:bg-slate-50'
-                    }`}
-                    onClick={() => setActiveIndex(isActive ? null : index)}
+                    key={item.name} 
+                    className="hover:bg-slate-50 transition-colors"
                   >
-                    <td className="px-6 py-4 font-mono text-slate-500">{item.code}</td>
                     <td className="px-6 py-4 font-medium text-slate-900 flex items-center gap-3">
                       <div 
-                        className={`w-3 h-3 rounded-full flex-shrink-0 transition-transform ${isActive ? 'scale-125 ring-2 ring-offset-1 ring-indigo-200' : ''}`} 
+                        className={`w-3 h-3 rounded-full flex-shrink-0`} 
                         style={{ backgroundColor: COLORS[index % COLORS.length] }}
                       />
                       {item.name}
                     </td>
-                    <td className="px-6 py-4 text-slate-500">{item.category}</td>
                     <td className="px-6 py-4 text-right font-medium text-slate-700">
-                      {state.currencySign}{item.value.toLocaleString()}
+                      {state.currencySign}{itemValue.toLocaleString()}
                     </td>
                     <td className="px-6 py-4 text-right text-slate-500">
                       {percentage.toFixed(1)}%
