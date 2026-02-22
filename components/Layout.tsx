@@ -13,6 +13,8 @@ import {
   Landmark
 } from 'lucide-react';
 import { useFinancials } from '../context/FinancialContext';
+import { useAuth } from '../context/AuthContext';
+import { LogOut, User } from 'lucide-react';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -36,6 +38,7 @@ const SidebarItem = ({ to, icon: Icon, label }: { to: string, icon: any, label: 
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
   const { state } = useFinancials();
+  const { user, logout } = useAuth();
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -67,11 +70,30 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           <SidebarItem to="/notes" icon={BookOpen} label="Financial Notes" />
         </nav>
 
-        <div className="p-4 border-t border-slate-800">
+        <div className="p-4 border-t border-slate-800 space-y-4">
           <div className="bg-slate-800 rounded-lg p-3">
             <p className="text-xs text-slate-400 uppercase font-bold mb-1">Current Entity</p>
             <p className="text-sm font-medium text-white truncate">{state.companyName}</p>
             <p className="text-xs text-emerald-400 mt-1">{state.period}</p>
+          </div>
+
+          <div className="flex items-center justify-between px-2">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center flex-shrink-0">
+                <User className="w-4 h-4 text-slate-300" />
+              </div>
+              <div className="truncate">
+                <p className="text-sm font-medium text-white truncate">{user?.username || 'User'}</p>
+                <p className="text-xs text-slate-400 truncate">Administrator</p>
+              </div>
+            </div>
+            <button 
+              onClick={logout}
+              className="text-slate-400 hover:text-white transition-colors p-1.5 hover:bg-slate-800 rounded-md"
+              title="Sign Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </div>
