@@ -1,6 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { useFinancials } from '../context/FinancialContext';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabaseClient';
 import { useNavigate } from 'react-router-dom';
 import { UploadCloud, FileSpreadsheet, FileText, Download, AlertTriangle, CheckCircle2, ArrowRight } from 'lucide-react';
 import { parseCSVFile, generateTemplate } from '../utils/csvHelpers';
@@ -8,6 +10,7 @@ import { Account, Transaction } from '../types';
 
 const ImportData: React.FC = () => {
   const { importLedger, state } = useFinancials();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
@@ -41,6 +44,24 @@ const ImportData: React.FC = () => {
     setLoading(true);
 
     try {
+      // Upload to Supabase Storage
+      if (user) {
+        const filePath = `${user.id}/imports/${Date.now()}/${selectedFile.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('app-files')
+          .upload(filePath, selectedFile);
+
+        if (uploadError) throw uploadError;
+
+        // Save file path in database
+        await supabase.from('file_uploads').insert({
+          user_id: user.id,
+          file_path: filePath,
+          original_name: selectedFile.name,
+          feature: 'import_data'
+        });
+      }
+
       // Parse file
       const { accounts, transactions } = await parseCSVFile(selectedFile, mode);
       

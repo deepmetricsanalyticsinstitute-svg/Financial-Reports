@@ -1,6 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useFinancials } from '../context/FinancialContext';
+import { useAuth } from '../context/AuthContext';
+import { supabase } from '../services/supabaseClient';
 import { AccountType, BankTransaction, Transaction } from '../types';
 import { UploadCloud, CheckCircle2, AlertCircle, ArrowLeftRight, Download, RefreshCw, Plus, Trash2, Edit2, X, Save, ArrowDownLeft, Calculator, Wand2 } from 'lucide-react';
 import { parseBankCSVFile, generateBankTemplate } from '../utils/csvHelpers';
@@ -32,6 +34,7 @@ const getDescriptionMatchScore = (desc1: string, desc2: string) => {
 
 const BankReconciliation: React.FC = () => {
   const { state, addTransaction, deleteTransaction, editTransaction } = useFinancials();
+  const { user } = useAuth();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
@@ -127,6 +130,24 @@ const BankReconciliation: React.FC = () => {
 
     setLoading(true);
     try {
+      // Upload to Supabase Storage
+      if (user) {
+        const filePath = `${user.id}/bank-statements/${Date.now()}/${file.name}`;
+        const { error: uploadError } = await supabase.storage
+          .from('app-files')
+          .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        // Save file path in database
+        await supabase.from('file_uploads').insert({
+          user_id: user.id,
+          file_path: filePath,
+          original_name: file.name,
+          feature: 'bank_reconciliation'
+        });
+      }
+
       const data = await parseBankCSVFile(file);
       setBankTransactions(data);
     } catch (error) {
