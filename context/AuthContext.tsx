@@ -3,6 +3,7 @@ import { supabase } from '../services/supabaseClient';
 import { Session } from '@supabase/supabase-js';
 
 interface User {
+  id: string;
   username: string;
   email?: string;
   role: 'admin' | 'user';
@@ -28,6 +29,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSession(session);
       if (session?.user) {
         setUser({
+          id: session.user.id,
           username: session.user.email || 'User',
           email: session.user.email,
           role: 'admin' // Default to admin for this app
@@ -43,6 +45,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       setSession(session);
       if (session?.user) {
         setUser({
+          id: session.user.id,
           username: session.user.email || 'User',
           email: session.user.email,
           role: 'admin'

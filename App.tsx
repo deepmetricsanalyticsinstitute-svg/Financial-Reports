@@ -28,8 +28,8 @@ const ProtectedRoute = ({ children }: { children: JSX.Element }) => {
 
 function App() {
   return (
-    <FinancialProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <FinancialProvider>
         <Router>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -57,8 +57,8 @@ function App() {
             />
           </Routes>
         </Router>
-      </AuthProvider>
-    </FinancialProvider>
+      </FinancialProvider>
+    </AuthProvider>
   );
 }
 

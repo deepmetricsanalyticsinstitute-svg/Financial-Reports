@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Account, AccountType, FinancialContextType, FinancialState, Transaction, Currency, ReportTemplate, JournalTemplate, JournalLineTemplate, CustomGroup } from '../types';
+import { supabase } from '../services/supabaseClient';
+import { useAuth } from './AuthContext';
 
 const INITIAL_LEDGER: Account[] = [
   // Assets
@@ -30,7 +32,6 @@ const INITIAL_LEDGER: Account[] = [
 ];
 
 const INITIAL_TRANSACTIONS: Transaction[] = [
-  // Sample transactions for "Cash at Bank" (id: 1) to enable reconciliation demo
   { id: 't1', accountId: '1', date: '2024-03-01', description: 'Opening Balance', amount: 100000 },
   { id: 't2', accountId: '1', date: '2024-03-05', description: 'Client Payment #1042', amount: 15000 },
   { id: 't3', accountId: '1', date: '2024-03-10', description: 'Rent Payment - March', amount: -2000 },
@@ -53,9 +54,11 @@ const INITIAL_CURRENCIES: Currency[] = [
 const FinancialContext = createContext<FinancialContextType | undefined>(undefined);
 
 export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(false);
   const [state, setState] = useState<FinancialState>({
-    ledger: INITIAL_LEDGER,
-    transactions: INITIAL_TRANSACTIONS,
+    ledger: [],
+    transactions: [],
     period: 'March 2024',
     companyName: 'Acme Corp.',
     currencySign: '$',
@@ -67,54 +70,252 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     customGroups: []
   });
 
-  const addAccount = (account: Account) => {
-    setState(prev => ({
-      ...prev,
-      ledger: [...prev.ledger, account]
-    }));
+  // Load data from Supabase
+  useEffect(() => {
+    if (user) {
+      loadData();
+    } else {
+      // Reset to empty or initial state if no user
+      setState(prev => ({ ...prev, ledger: [], transactions: [] }));
+    }
+  }, [user]);
+
+  const loadData = async () => {
+    if (!user) return;
+    setLoading(true);
+
+    try {
+      // 1. Settings
+      const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', user.id).single();
+      
+      if (!settings) {
+        await seedData();
+        return;
+      }
+
+      // 2. Accounts
+      const { data: accounts } = await supabase.from('accounts').select('*').eq('user_id', user.id);
+      
+      // 3. Transactions
+      const { data: transactions } = await supabase.from('transactions').select('*').eq('user_id', user.id);
+
+      // 4. Templates
+      const { data: reportTemplates } = await supabase.from('report_templates').select('*').eq('user_id', user.id);
+      const { data: journalTemplates } = await supabase.from('journal_templates').select('*').eq('user_id', user.id);
+      const { data: journalLineTemplates } = await supabase.from('journal_line_templates').select('*').eq('user_id', user.id);
+      
+      // 5. Custom Groups
+      const { data: customGroups } = await supabase.from('custom_groups').select('*').eq('user_id', user.id);
+
+      setState({
+        ledger: (accounts || []).map(a => ({
+          ...a,
+          customGroupId: a.custom_group_id
+        })),
+        transactions: (transactions || []).map(t => ({
+          ...t,
+          accountId: t.account_id,
+          originalCurrency: t.original_currency,
+          originalAmount: t.original_amount,
+          exchangeRate: t.exchange_rate
+        })),
+        period: settings.period || 'March 2024',
+        companyName: settings.company_name || 'Acme Corp.',
+        currencySign: settings.currency_sign || '$',
+        baseCurrency: settings.base_currency || 'USD',
+        currencies: settings.currencies || INITIAL_CURRENCIES,
+        templates: (reportTemplates || []).map(t => ({
+          ...t,
+          reportType: t.report_type,
+          hiddenCategories: t.hidden_categories
+        })),
+        journalTemplates: (journalTemplates || []).map(t => ({
+          ...t,
+          lines: t.lines || []
+        })),
+        journalLineTemplates: (journalLineTemplates || []).map(t => ({
+          ...t,
+          accountId: t.account_id
+        })),
+        customGroups: customGroups || []
+      });
+
+    } catch (error) {
+      console.error('Error loading data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const updateAccountBalance = (id: string, debit: number, credit: number) => {
-    setState(prev => ({
-      ...prev,
-      ledger: prev.ledger.map(acc => 
-        acc.id === id ? { ...acc, debit, credit } : acc
-      )
+  const seedData = async () => {
+    if (!user) return;
+    
+    // Settings
+    await supabase.from('user_settings').insert({
+      user_id: user.id,
+      company_name: 'Acme Corp.',
+      period: 'March 2024',
+      currency_sign: '$',
+      base_currency: 'USD',
+      currencies: INITIAL_CURRENCIES
+    });
+
+    // Accounts
+    // Generate new unique IDs for accounts to prevent collisions
+    const accountIdMap = new Map<string, string>();
+    const accountsPayload = INITIAL_LEDGER.map(a => {
+      const newId = `acc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${a.id}`;
+      accountIdMap.set(a.id, newId);
+      return {
+        id: newId,
+        user_id: user.id,
+        code: a.code,
+        name: a.name,
+        type: a.type,
+        debit: a.debit,
+        credit: a.credit,
+        category: a.category,
+        note: a.note
+      };
+    });
+    await supabase.from('accounts').insert(accountsPayload);
+
+    // Transactions
+    // Use the new account IDs
+    const transactionsPayload = INITIAL_TRANSACTIONS.map((t, index) => ({
+      id: `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`,
+      user_id: user.id,
+      date: t.date,
+      account_id: accountIdMap.get(t.accountId) || t.accountId,
+      description: t.description,
+      amount: t.amount
     }));
+    await supabase.from('transactions').insert(transactionsPayload);
+
+    await loadData();
   };
 
-  const importLedger = (newLedger: Account[], newTransactions?: Transaction[]) => {
-    setState(prev => ({
-      ...prev,
-      ledger: newLedger,
-      transactions: newTransactions || [] 
-    }));
+  const addAccount = async (account: Account) => {
+    if (!user) return;
+    
+    const { error } = await supabase.from('accounts').insert({
+      id: account.id,
+      user_id: user.id,
+      code: account.code,
+      name: account.name,
+      type: account.type,
+      debit: account.debit,
+      credit: account.credit,
+      category: account.category,
+      note: account.note,
+      custom_group_id: account.customGroupId
+    });
+
+    if (!error) {
+      setState(prev => ({
+        ...prev,
+        ledger: [...prev.ledger, account]
+      }));
+    }
   };
 
-  const updateCompanyName = (name: string) => {
-    setState(prev => ({
-      ...prev,
-      companyName: name
-    }));
+  const updateAccountBalance = async (id: string, debit: number, credit: number) => {
+    if (!user) return;
+
+    const { error } = await supabase.from('accounts').update({ debit, credit }).eq('id', id).eq('user_id', user.id);
+
+    if (!error) {
+      setState(prev => ({
+        ...prev,
+        ledger: prev.ledger.map(acc => 
+          acc.id === id ? { ...acc, debit, credit } : acc
+        )
+      }));
+    }
   };
 
-  const updateCurrencySign = (sign: string) => {
-    // Legacy support: updates the symbol of the current base currency locally in list
-    // and the global display sign
+  const importLedger = async (newLedger: Account[], newTransactions?: Transaction[]) => {
+    if (!user) return;
+
+    // Delete existing
+    await supabase.from('accounts').delete().eq('user_id', user.id);
+    await supabase.from('transactions').delete().eq('user_id', user.id);
+
+    // Insert new with unique IDs
+    const accountIdMap = new Map<string, string>();
+    const accountsPayload = newLedger.map(a => {
+      // Generate a unique ID for the account
+      const newId = `acc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${a.code}`;
+      accountIdMap.set(a.id, newId);
+      
+      return {
+        id: newId,
+        user_id: user.id,
+        code: a.code,
+        name: a.name,
+        type: a.type,
+        debit: a.debit,
+        credit: a.credit,
+        category: a.category,
+        note: a.note,
+        custom_group_id: a.customGroupId
+      };
+    });
+    await supabase.from('accounts').insert(accountsPayload);
+
+    if (newTransactions && newTransactions.length > 0) {
+      const txPayload = newTransactions.map((t, index) => ({
+        id: `tx-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${index}`,
+        user_id: user.id,
+        date: t.date,
+        account_id: accountIdMap.get(t.accountId) || t.accountId, // Use mapped ID
+        description: t.description,
+        amount: t.amount,
+        reference: t.reference,
+        original_currency: t.originalCurrency,
+        original_amount: t.originalAmount,
+        exchange_rate: t.exchangeRate
+      }));
+      await supabase.from('transactions').insert(txPayload);
+    }
+
+    // Reload data to sync state with new IDs
+    await loadData();
+  };
+
+  const updateCompanyName = async (name: string) => {
+    if (!user) return;
+    await supabase.from('user_settings').update({ company_name: name }).eq('user_id', user.id);
+    setState(prev => ({ ...prev, companyName: name }));
+  };
+
+  const updateCurrencySign = async (sign: string) => {
+    if (!user) return;
+    // Also update the symbol in currencies array
+    const updatedCurrencies = state.currencies.map(c => c.code === state.baseCurrency ? { ...c, symbol: sign } : c);
+    
+    await supabase.from('user_settings').update({ 
+      currency_sign: sign,
+      currencies: updatedCurrencies
+    }).eq('user_id', user.id);
+
     setState(prev => ({
       ...prev,
       currencySign: sign,
-      currencies: prev.currencies.map(c => c.code === prev.baseCurrency ? { ...c, symbol: sign } : c)
+      currencies: updatedCurrencies
     }));
   };
 
-  const updateBaseCurrency = (code: string) => {
+  const updateBaseCurrency = async (code: string) => {
+    if (!user) return;
     const selected = state.currencies.find(c => c.code === code);
     if (!selected) return;
 
-    // Note: Changing base currency implies FUTURE transactions use this base.
-    // Existing ledger amounts are NOT automatically converted in this simplified model 
-    // to prevent accidental data destruction.
+    await supabase.from('user_settings').update({ 
+      base_currency: code,
+      currency_sign: selected.symbol
+    }).eq('user_id', user.id);
+
     setState(prev => ({
       ...prev,
       baseCurrency: code,
@@ -122,261 +323,318 @@ export const FinancialProvider: React.FC<{ children: ReactNode }> = ({ children 
     }));
   };
 
-  const updateExchangeRate = (code: string, rate: number) => {
+  const updateExchangeRate = async (code: string, rate: number) => {
+    if (!user) return;
+    const updatedCurrencies = state.currencies.map(c => c.code === code ? { ...c, rate } : c);
+    
+    await supabase.from('user_settings').update({ currencies: updatedCurrencies }).eq('user_id', user.id);
+
     setState(prev => ({
       ...prev,
-      currencies: prev.currencies.map(c => c.code === code ? { ...c, rate } : c)
+      currencies: updatedCurrencies
     }));
   };
 
-  const addCurrency = (currency: Currency) => {
-    setState(prev => {
-      if (prev.currencies.some(c => c.code === currency.code)) return prev;
-      return {
-        ...prev,
-        currencies: [...prev.currencies, currency]
-      };
-    });
-  };
+  const addCurrency = async (currency: Currency) => {
+    if (!user) return;
+    if (state.currencies.some(c => c.code === currency.code)) return;
 
-  const updatePeriod = (date: string) => {
+    const updatedCurrencies = [...state.currencies, currency];
+    await supabase.from('user_settings').update({ currencies: updatedCurrencies }).eq('user_id', user.id);
+
     setState(prev => ({
       ...prev,
-      period: date
+      currencies: updatedCurrencies
     }));
   };
 
-  const updateAccountNote = (id: string, note: string) => {
+  const updatePeriod = async (date: string) => {
+    if (!user) return;
+    await supabase.from('user_settings').update({ period: date }).eq('user_id', user.id);
+    setState(prev => ({ ...prev, period: date }));
+  };
+
+  const updateAccountNote = async (id: string, note: string) => {
+    if (!user) return;
+    await supabase.from('accounts').update({ note }).eq('id', id).eq('user_id', user.id);
     setState(prev => ({
       ...prev,
-      ledger: prev.ledger.map(acc => 
-        acc.id === id ? { ...acc, note } : acc
-      )
+      ledger: prev.ledger.map(acc => acc.id === id ? { ...acc, note } : acc)
     }));
   };
 
-  const updateAccountDetails = (id: string, updates: Partial<Account>) => {
+  const updateAccountDetails = async (id: string, updates: Partial<Account>) => {
+    if (!user) return;
+    
+    const dbUpdates: any = { ...updates };
+    if (updates.customGroupId !== undefined) dbUpdates.custom_group_id = updates.customGroupId;
+    delete dbUpdates.customGroupId;
+
+    await supabase.from('accounts').update(dbUpdates).eq('id', id).eq('user_id', user.id);
+
     setState(prev => ({
       ...prev,
-      ledger: prev.ledger.map(acc => 
-        acc.id === id ? { ...acc, ...updates } : acc
-      )
+      ledger: prev.ledger.map(acc => acc.id === id ? { ...acc, ...updates } : acc)
     }));
   };
 
-  const bulkUpdateAccounts = (ids: string[], updates: Partial<Account>) => {
+  const bulkUpdateAccounts = async (ids: string[], updates: Partial<Account>) => {
+    if (!user) return;
+
+    const dbUpdates: any = { ...updates };
+    if (updates.customGroupId !== undefined) dbUpdates.custom_group_id = updates.customGroupId;
+    delete dbUpdates.customGroupId;
+
+    // Supabase doesn't support bulk update with 'in' easily for different values, but here updates are same for all
+    await supabase.from('accounts').update(dbUpdates).in('id', ids).eq('user_id', user.id);
+
     setState(prev => ({
       ...prev,
-      ledger: prev.ledger.map(acc => 
-        ids.includes(acc.id) ? { ...acc, ...updates } : acc
-      )
+      ledger: prev.ledger.map(acc => ids.includes(acc.id) ? { ...acc, ...updates } : acc)
     }));
   };
 
-  const addTransaction = (newTx: Omit<Transaction, 'id'>) => {
-    // Use a random suffix to avoid ID collisions when saving multiple lines quickly
+  const addTransaction = async (newTx: Omit<Transaction, 'id'>) => {
+    if (!user) return;
+
     const transactionId = `manual-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Currency Conversion Logic
-    // Input Amount is in originalCurrency
-    // Ledger Amount must be in baseCurrency
     let finalAmount = newTx.amount;
     let exchangeRate = newTx.exchangeRate || 1.0;
 
-    // If original currency is provided and differs from base, ensure conversion
     if (newTx.originalCurrency && newTx.originalCurrency !== state.baseCurrency) {
-       // If exchange rate wasn't explicitly provided, look it up
        if (!newTx.exchangeRate) {
          const currency = state.currencies.find(c => c.code === newTx.originalCurrency);
          exchangeRate = currency ? currency.rate : 1.0;
        }
-       
-       // Calculate Base Amount: 
-       // Case: Rate is defined as "1 Unit of Foreign = X Base"
-       // Amount (Base) = Amount (Foreign) * Rate
        finalAmount = newTx.originalAmount ? newTx.originalAmount * exchangeRate : newTx.amount * exchangeRate;
     }
 
     const transaction: Transaction = { 
       ...newTx, 
       id: transactionId,
-      amount: finalAmount, // Store converted amount for ledger math
+      amount: finalAmount,
       exchangeRate
     };
     
-    setState(prev => {
-      // 1. Add Transaction
-      const updatedTransactions = [...prev.transactions, transaction];
-      
-      // 2. Update Account Balance
-      const updatedLedger = prev.ledger.map(acc => {
-        if (acc.id === transaction.accountId) {
-          let newDebit = acc.debit;
-          let newCredit = acc.credit;
-
-          if (transaction.amount > 0) newDebit += transaction.amount;
-          else newCredit += Math.abs(transaction.amount);
-
-          return { ...acc, debit: newDebit, credit: newCredit };
-        }
-        return acc;
-      });
-
-      return {
-        ...prev,
-        ledger: updatedLedger,
-        transactions: updatedTransactions
-      };
+    // 1. Insert Transaction
+    await supabase.from('transactions').insert({
+      id: transaction.id,
+      user_id: user.id,
+      date: transaction.date,
+      account_id: transaction.accountId,
+      description: transaction.description,
+      amount: transaction.amount,
+      reference: transaction.reference,
+      original_currency: transaction.originalCurrency,
+      original_amount: transaction.originalAmount,
+      exchange_rate: transaction.exchangeRate
     });
+
+    // 2. Update Account Balance
+    // We need to calculate new balance.
+    const account = state.ledger.find(a => a.id === transaction.accountId);
+    if (account) {
+      let newDebit = account.debit;
+      let newCredit = account.credit;
+
+      if (transaction.amount > 0) newDebit += transaction.amount;
+      else newCredit += Math.abs(transaction.amount);
+
+      await supabase.from('accounts').update({ debit: newDebit, credit: newCredit }).eq('id', account.id).eq('user_id', user.id);
+      
+      setState(prev => {
+        const updatedLedger = prev.ledger.map(acc => {
+          if (acc.id === transaction.accountId) {
+            return { ...acc, debit: newDebit, credit: newCredit };
+          }
+          return acc;
+        });
+        return {
+          ...prev,
+          ledger: updatedLedger,
+          transactions: [...prev.transactions, transaction]
+        };
+      });
+    } else {
+      // Just update transactions if account not found (shouldn't happen)
+      setState(prev => ({
+        ...prev,
+        transactions: [...prev.transactions, transaction]
+      }));
+    }
   };
 
-  const editTransaction = (id: string, updates: Partial<Transaction>) => {
-    setState(prev => {
-      const oldTx = prev.transactions.find(t => t.id === id);
-      if (!oldTx) return prev;
+  const editTransaction = async (id: string, updates: Partial<Transaction>) => {
+    if (!user) return;
 
-      // Simple edit: assumes amount update is already in base currency 
-      // or that advanced currency edit is handled by passing converted amount in 'updates'
-      const newAmount = updates.amount !== undefined ? updates.amount : oldTx.amount;
-      
-      const updatedLedger = prev.ledger.map(acc => {
-        if (acc.id === oldTx.accountId) {
-           let newDebit = acc.debit;
-           let newCredit = acc.credit;
+    const oldTx = state.transactions.find(t => t.id === id);
+    if (!oldTx) return;
 
-           // Remove old effect
-           if (oldTx.amount > 0) newDebit -= oldTx.amount;
-           else newCredit -= Math.abs(oldTx.amount);
+    const newAmount = updates.amount !== undefined ? updates.amount : oldTx.amount;
+    
+    // Update Transaction in DB
+    const dbUpdates: any = { ...updates };
+    if (updates.accountId) dbUpdates.account_id = updates.accountId;
+    if (updates.originalCurrency) dbUpdates.original_currency = updates.originalCurrency;
+    if (updates.originalAmount) dbUpdates.original_amount = updates.originalAmount;
+    if (updates.exchangeRate) dbUpdates.exchange_rate = updates.exchangeRate;
+    delete dbUpdates.accountId;
+    delete dbUpdates.originalCurrency;
+    delete dbUpdates.originalAmount;
+    delete dbUpdates.exchangeRate;
 
-           // Add new effect
-           if (newAmount > 0) newDebit += newAmount;
-           else newCredit += Math.abs(newAmount);
+    await supabase.from('transactions').update(dbUpdates).eq('id', id).eq('user_id', user.id);
 
-           return { ...acc, debit: newDebit, credit: newCredit };
-        }
-        return acc;
-      });
+    // Update Account Balances
+    // If account changed, we need to update two accounts.
+    // For simplicity, let's assume accountId doesn't change often or handle it if it does.
+    // The current logic in original file assumed accountId didn't change or handled it simply.
+    // The original logic only updated the SAME account.
+    
+    const account = state.ledger.find(a => a.id === oldTx.accountId);
+    if (account) {
+       let newDebit = account.debit;
+       let newCredit = account.credit;
 
-      const updatedTransactions = prev.transactions.map(t => 
-        t.id === id ? { ...t, ...updates } : t
-      );
+       // Remove old effect
+       if (oldTx.amount > 0) newDebit -= oldTx.amount;
+       else newCredit -= Math.abs(oldTx.amount);
 
-      return {
-        ...prev,
-        ledger: updatedLedger,
-        transactions: updatedTransactions
-      };
-    });
+       // Add new effect
+       if (newAmount > 0) newDebit += newAmount;
+       else newCredit += Math.abs(newAmount);
+
+       await supabase.from('accounts').update({ debit: newDebit, credit: newCredit }).eq('id', account.id).eq('user_id', user.id);
+
+       setState(prev => {
+         const updatedLedger = prev.ledger.map(acc => 
+           acc.id === account.id ? { ...acc, debit: newDebit, credit: newCredit } : acc
+         );
+         const updatedTransactions = prev.transactions.map(t => 
+           t.id === id ? { ...t, ...updates } : t
+         );
+         return { ...prev, ledger: updatedLedger, transactions: updatedTransactions };
+       });
+    }
   };
 
-  const deleteTransaction = (id: string) => {
-    setState(prev => {
-      const tx = prev.transactions.find(t => t.id === id);
-      if (!tx) return prev;
+  const deleteTransaction = async (id: string) => {
+    if (!user) return;
 
-      const updatedLedger = prev.ledger.map(acc => {
-        if (acc.id === tx.accountId) {
-          let newDebit = acc.debit;
-          let newCredit = acc.credit;
+    const tx = state.transactions.find(t => t.id === id);
+    if (!tx) return;
 
-          if (tx.amount > 0) newDebit -= tx.amount;
-          else newCredit -= Math.abs(tx.amount);
+    await supabase.from('transactions').delete().eq('id', id).eq('user_id', user.id);
 
-          return { ...acc, debit: newDebit, credit: newCredit };
-        }
-        return acc;
-      });
+    const account = state.ledger.find(a => a.id === tx.accountId);
+    if (account) {
+      let newDebit = account.debit;
+      let newCredit = account.credit;
 
-      return {
+      if (tx.amount > 0) newDebit -= tx.amount;
+      else newCredit -= Math.abs(tx.amount);
+
+      await supabase.from('accounts').update({ debit: newDebit, credit: newCredit }).eq('id', account.id).eq('user_id', user.id);
+
+      setState(prev => ({
         ...prev,
-        ledger: updatedLedger,
+        ledger: prev.ledger.map(acc => acc.id === account.id ? { ...acc, debit: newDebit, credit: newCredit } : acc),
         transactions: prev.transactions.filter(t => t.id !== id)
-      };
+      }));
+    }
+  };
+
+  const addTemplate = async (template: ReportTemplate) => {
+    if (!user) return;
+    await supabase.from('report_templates').insert({
+      id: template.id,
+      user_id: user.id,
+      name: template.name,
+      report_type: template.reportType,
+      hidden_categories: template.hiddenCategories
     });
+    setState(prev => ({ ...prev, templates: [...prev.templates, template] }));
   };
 
-  const addTemplate = (template: ReportTemplate) => {
-    setState(prev => ({
-      ...prev,
-      templates: [...prev.templates, template]
-    }));
+  const deleteTemplate = async (id: string) => {
+    if (!user) return;
+    await supabase.from('report_templates').delete().eq('id', id).eq('user_id', user.id);
+    setState(prev => ({ ...prev, templates: prev.templates.filter(t => t.id !== id) }));
   };
 
-  const deleteTemplate = (id: string) => {
-    setState(prev => ({
-      ...prev,
-      templates: prev.templates.filter(t => t.id !== id)
-    }));
+  const addJournalTemplate = async (template: JournalTemplate) => {
+    if (!user) return;
+    await supabase.from('journal_templates').insert({
+      id: template.id,
+      user_id: user.id,
+      name: template.name,
+      memo: template.memo,
+      lines: template.lines
+    });
+    setState(prev => ({ ...prev, journalTemplates: [...prev.journalTemplates, template] }));
   };
 
-  const addJournalTemplate = (template: JournalTemplate) => {
-    setState(prev => ({
-      ...prev,
-      journalTemplates: [...prev.journalTemplates, template]
-    }));
+  const deleteJournalTemplate = async (id: string) => {
+    if (!user) return;
+    await supabase.from('journal_templates').delete().eq('id', id).eq('user_id', user.id);
+    setState(prev => ({ ...prev, journalTemplates: prev.journalTemplates.filter(t => t.id !== id) }));
   };
 
-  const deleteJournalTemplate = (id: string) => {
-    setState(prev => ({
-      ...prev,
-      journalTemplates: prev.journalTemplates.filter(t => t.id !== id)
-    }));
+  const addJournalLineTemplate = async (template: JournalLineTemplate) => {
+    if (!user) return;
+    await supabase.from('journal_line_templates').insert({
+      id: template.id,
+      user_id: user.id,
+      name: template.name,
+      account_id: template.accountId,
+      description: template.description,
+      debit: template.debit,
+      credit: template.credit
+    });
+    setState(prev => ({ ...prev, journalLineTemplates: [...prev.journalLineTemplates, template] }));
   };
 
-  const addJournalLineTemplate = (template: JournalLineTemplate) => {
-    setState(prev => ({
-      ...prev,
-      journalLineTemplates: [...prev.journalLineTemplates, template]
-    }));
+  const deleteJournalLineTemplate = async (id: string) => {
+    if (!user) return;
+    await supabase.from('journal_line_templates').delete().eq('id', id).eq('user_id', user.id);
+    setState(prev => ({ ...prev, journalLineTemplates: prev.journalLineTemplates.filter(t => t.id !== id) }));
   };
 
-  const deleteJournalLineTemplate = (id: string) => {
-    setState(prev => ({
-      ...prev,
-      journalLineTemplates: prev.journalLineTemplates.filter(t => t.id !== id)
-    }));
-  };
-
-  // Custom Group Methods
-  const addCustomGroup = (name: string) => {
+  const addCustomGroup = async (name: string) => {
+    if (!user) return;
     const newGroup: CustomGroup = { id: `group-${Date.now()}`, name };
-    setState(prev => ({
-      ...prev,
-      customGroups: [...prev.customGroups, newGroup]
-    }));
+    await supabase.from('custom_groups').insert({
+      id: newGroup.id,
+      user_id: user.id,
+      name: newGroup.name
+    });
+    setState(prev => ({ ...prev, customGroups: [...prev.customGroups, newGroup] }));
   };
 
-  const updateCustomGroup = (id: string, name: string) => {
-    setState(prev => ({
-      ...prev,
-      customGroups: prev.customGroups.map(g => g.id === id ? { ...g, name } : g)
-    }));
+  const updateCustomGroup = async (id: string, name: string) => {
+    if (!user) return;
+    await supabase.from('custom_groups').update({ name }).eq('id', id).eq('user_id', user.id);
+    setState(prev => ({ ...prev, customGroups: prev.customGroups.map(g => g.id === id ? { ...g, name } : g) }));
   };
 
-  const deleteCustomGroup = (id: string) => {
+  const deleteCustomGroup = async (id: string) => {
+    if (!user) return;
+    await supabase.from('custom_groups').delete().eq('id', id).eq('user_id', user.id);
+    
+    // Reset account customGroupId
+    await supabase.from('accounts').update({ custom_group_id: null }).eq('custom_group_id', id).eq('user_id', user.id);
+
     setState(prev => ({
       ...prev,
       customGroups: prev.customGroups.filter(g => g.id !== id),
-      // Optional: Remove group assignment from accounts?
-      // For now, let's reset account customGroupId if it matches
       ledger: prev.ledger.map(acc => acc.customGroupId === id ? { ...acc, customGroupId: undefined } : acc)
     }));
   };
 
-  const resetData = () => {
-    setState({
-      ledger: INITIAL_LEDGER,
-      transactions: INITIAL_TRANSACTIONS,
-      period: 'March 2024',
-      companyName: 'Acme Corp.',
-      currencySign: '$',
-      baseCurrency: 'USD',
-      currencies: INITIAL_CURRENCIES,
-      templates: [],
-      journalTemplates: [],
-      journalLineTemplates: [],
-      customGroups: []
-    });
+  const resetData = async () => {
+    if (!user) return;
+    await seedData();
   };
 
   return (
