@@ -1,32 +1,47 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { Lock, User, ArrowRight } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
+import { Lock, Mail, ArrowRight } from 'lucide-react';
 
 const Login: React.FC = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const { login } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-
   const from = location.state?.from?.pathname || '/';
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [email, setEmail] = useState(location.state?.email || '');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(location.state?.message || '');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setSuccess('');
+    setLoading(true);
 
-    if (!username || !password) {
-      setError('Please enter both username and password');
+    if (!email || !password) {
+      setError('Please enter both email and password');
+      setLoading(false);
       return;
     }
 
-    const success = login(username, password);
-    if (success) {
-       navigate(from, { replace: true });
-    } else {
-      setError('Invalid username or password');
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        navigate(from, { replace: true });
+      }
+    } catch (err) {
+      setError('An unexpected error occurred');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -43,6 +58,11 @@ const Login: React.FC = () => {
 
         <div className="p-8">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {success && (
+              <div className="bg-emerald-50 text-emerald-600 p-3 rounded-lg text-sm text-center border border-emerald-100">
+                {success}
+              </div>
+            )}
             {error && (
               <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center border border-red-100">
                 {error}
@@ -50,17 +70,18 @@ const Login: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 block">Username</label>
+              <label className="text-sm font-medium text-slate-700 block">Email</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-slate-400" />
+                  <Mail className="h-5 w-5 text-slate-400" />
                 </div>
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
-                  placeholder="Enter your username"
+                  placeholder="Enter your email"
+                  required
                 />
               </div>
             </div>
@@ -77,16 +98,18 @@ const Login: React.FC = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
                   placeholder="••••••••"
+                  required
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-lg transition-all duration-200 transform active:scale-[0.98]"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-lg transition-all duration-200 transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>Sign In</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>{loading ? 'Signing In...' : 'Sign In'}</span>
+              {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
           </form>
 

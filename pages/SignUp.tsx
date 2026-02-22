@@ -1,40 +1,60 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { UserPlus, User, Lock, ArrowRight } from 'lucide-react';
+import { supabase } from '../services/supabaseClient';
+import { UserPlus, Mail, Lock, ArrowRight } from 'lucide-react';
 
 const SignUp: React.FC = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
-  const { signup } = useAuth();
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    if (!username || !password || !confirmPassword) {
+    if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields');
+      setLoading(false);
       return;
     }
 
     if (password !== confirmPassword) {
       setError('Passwords do not match');
+      setLoading(false);
       return;
     }
 
     if (password.length < 6) {
       setError('Password must be at least 6 characters');
+      setLoading(false);
       return;
     }
 
-    const success = signup(username, password);
-    if (success) {
-      navigate('/');
-    } else {
-      setError('Username already exists');
+    try {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        navigate('/login', { 
+          state: { 
+            email, 
+            message: 'Your account has been created. Please check your email and verify your address before logging in.' 
+          } 
+        });
+      }
+    } catch (err) {
+      setError('An unexpected error occurred');
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -58,17 +78,18 @@ const SignUp: React.FC = () => {
             )}
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700 block">Username</label>
+              <label className="text-sm font-medium text-slate-700 block">Email</label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-slate-400" />
+                  <Mail className="h-5 w-5 text-slate-400" />
                 </div>
                 <input
-                  type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
-                  placeholder="Choose a username"
+                  placeholder="Enter your email"
+                  required
                 />
               </div>
             </div>
@@ -85,6 +106,7 @@ const SignUp: React.FC = () => {
                   onChange={(e) => setPassword(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
                   placeholder="Create a password"
+                  required
                 />
               </div>
             </div>
@@ -101,16 +123,18 @@ const SignUp: React.FC = () => {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   className="block w-full pl-10 pr-3 py-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-colors"
                   placeholder="Confirm your password"
+                  required
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-lg transition-all duration-200 transform active:scale-[0.98]"
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 bg-slate-900 hover:bg-slate-800 text-white font-medium py-2.5 rounded-lg transition-all duration-200 transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span>Create Account</span>
-              <ArrowRight className="w-4 h-4" />
+              <span>{loading ? 'Creating Account...' : 'Create Account'}</span>
+              {!loading && <ArrowRight className="w-4 h-4" />}
             </button>
           </form>
 
